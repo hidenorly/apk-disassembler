@@ -24,6 +24,16 @@ require "./ExecUtil"
 require 'shellwords'
 
 
+class ApkUtil
+	def self.extractArchive(archivePath, outputDir, specificFile=nil)
+		exec_cmd = "unzip -o -qq  #{Shellwords.escape(archivePath)}"
+		exec_cmd = "#{exec_cmd} #{Shellwords.escape(specificFile)}" if specificFile
+		exec_cmd = "#{exec_cmd} -d #{Shellwords.escape(outputDir)} 2>/dev/null"
+
+		ExecUtil.execCmd(exec_cmd)
+	end
+end
+
 class ApkDisasmExecutor < TaskAsync
 	DEF_ANDROID_MANIFEST = "AndroidManifest.xml"
 	DEF_CLASSES = "classes.dex"
@@ -49,6 +59,9 @@ class ApkDisasmExecutor < TaskAsync
 		FileUtil.ensureDirectory(@outputDirectory)
 
 		# extract the .apk
+		if @extractAll then
+			ApkUtil.extractArchive(@apkName, @outputDirectory)
+		end
 
 		# convert binary AndroidManifest.xml to plain xml
 
@@ -89,6 +102,10 @@ OptionParser.new do |opts|
 
 	opts.on("-v", "--verbose", "Enable verbose status output") do
 		options[:verbose] = true
+	end
+
+	opts.on("-x", "--extractAll", "Enable to extract all in the apk") do
+		options[:extractAll] = true
 	end
 end.parse!
 
