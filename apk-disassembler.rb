@@ -19,18 +19,26 @@ require 'date'
 require 'rexml/document'
 require "./TaskManager"
 require "./FileUtil"
+require "FileUtils"
 require "./StrUtil"
 require "./ExecUtil"
 require 'shellwords'
 
-
 class ApkUtil
+	DEF_XMLPRINTER = ENV["PATH_AXMLPRINTER"] ? ENV["PATH_AXMLPRINTER"] : "AXMLPrinter2.jar"
+
 	def self.extractArchive(archivePath, outputDir, specificFile=nil)
 		exec_cmd = "unzip -o -qq  #{Shellwords.escape(archivePath)}"
 		exec_cmd = "#{exec_cmd} #{Shellwords.escape(specificFile)}" if specificFile
 		exec_cmd = "#{exec_cmd} -d #{Shellwords.escape(outputDir)} 2>/dev/null"
 
 		ExecUtil.execCmd(exec_cmd)
+	end
+
+	def self.convertedFromBinaryXmlToPlainXml(binaryXmlPath, outputPath)
+		exec_cmd = "java -jar #{Shellwords.escape(DEF_XMLPRINTER)} #{Shellwords.escape(binaryXmlPath)} > #{Shellwords.escape(outputPath)} 2>/dev/null"
+
+		ExecUtil.execCmd(exec_cmd, FileUtil.getDirectoryFromPath(binaryXmlPath), false)
 	end
 end
 
@@ -55,6 +63,16 @@ class ApkDisasmExecutor < TaskAsync
 		@execTimeout = options[:execTimeout]
 	end
 
+	def _convertBinaryXmlToPlain(binaryXmlPath)
+		basePath = FileUtil.getDirectoryFromPath(binaryXmlPath)
+		filename = FileUtil.getFilenameFromPath(binaryXmlPath)
+		tmpOut1 = "#{basePath}/#{filename}"
+		tmpOut2 = "#{basePath}/plain-#{filename}"
+		ApkUtil.convertedFromBinaryXmlToPlainXml(tmpOut1, tmpOut2)
+		FileUtils.rm_f(tmpOut1) if File.exist?(tmpOut1)
+		FileUtils.mv(tmpOut2, tmpOut1) if File.exist?(tmpOut2)
+	end
+
 	def execute
 		FileUtil.ensureDirectory(@outputDirectory)
 
@@ -63,13 +81,24 @@ class ApkDisasmExecutor < TaskAsync
 			ApkUtil.extractArchive(@apkName, @outputDirectory)
 		end
 
-		# convert binary AndroidManifest.xml to plain xml
+		if @manifest || @resource || @source || @tombstone then
+			# convert binary AndroidManifest.xml to plain xml
+			if @manifest then
+				ApkUtil.extractArchive(@apkName, @outputDirectory, DEF_ANDROID_MANIFEST) if !@extractAll
+				manifestPath="#{@outputDirectory}/#{DEF_ANDROID_MANIFEST}"
+				if File.exist?(manifestPath) then
+					_convertBinaryXmlToPlain(manifestPath)
+				end
+			end
 
-		# convert binary xml in res/ to plain xml
+			# convert binary xml in res/ to plain xml
 
-		# create stat info. as tombstone
+			# create stat info. as tombstone
 
-		# disassemble .class to .cjava and file output
+			# disassemble .class to .cjava and file output
+		end
+
+
 		_doneTask()
 	end
 end
@@ -102,6 +131,10 @@ OptionParser.new do |opts|
 
 	opts.on("-v", "--verbose", "Enable verbose status output") do
 		options[:verbose] = true
+	end
+
+	opts.on("-m", "--enableManifest", "Enable to extract plain AndroidManifest.xml") do
+		options[:manifest] = true
 	end
 
 	opts.on("-x", "--extractAll", "Enable to extract all in the apk") do

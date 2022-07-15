@@ -75,7 +75,13 @@ class FileUtil
 
 	def self.getFilenameFromPath(path)
 		pos = path.rindex("/")
-		path = path.slice(pos, path.length-pos) if pos
+		path = pos ? path.slice(pos+1, path.length-pos) : nil
+		return path
+	end
+
+	def self.getDirectoryFromPath(path)
+		pos = path.rindex("/")
+		path = pos ? path.slice(0, pos-1) : nil
 		return path
 	end
 
