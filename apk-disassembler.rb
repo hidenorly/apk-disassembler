@@ -26,6 +26,8 @@ require 'shellwords'
 
 class ApkUtil
 	DEF_XMLPRINTER = ENV["PATH_AXMLPRINTER"] ? ENV["PATH_AXMLPRINTER"] : "AXMLPrinter2.jar"
+	DEF_DEX2JAR = ENV["PATH_DEX2JAR"] ? ENV["PATH_DEX2JAR"] : "d2j-dex2jar.sh"
+	DEF_DISASM = ENV["PATH_JAVADISASM"] ? ENV["PATH_JAVADISASM"] : "class2java.sh"
 
 	def self.extractArchive(archivePath, outputDir, specificFile=nil)
 		exec_cmd = "unzip -o -qq  #{Shellwords.escape(archivePath)}"
@@ -40,11 +42,38 @@ class ApkUtil
 
 		ExecUtil.execCmd(exec_cmd, FileUtil.getDirectoryFromPath(binaryXmlPath), false)
 	end
+
+	def self.convertDex2Jar(dexPath, outputJarDir)
+		outputJarDir = outputJarDir.slice( 0, outputJarDir.length-1 ) if outputJarDir.end_with?("/")
+
+		filename = FileUtil.getFilenameFromPath(dexPath)
+		pos = filename.rindex(".dex")
+		filename = filename.slice(0, pos) if pos
+		outputJarPath = "#{outputJarDir}/#{filename}-dex2jar.jar"
+
+		exec_cmd = "#{Shellwords.escape(DEF_DEX2JAR)} --force #{Shellwords.escape(dexPath)} -o #{Shellwords.escape(outputJarPath)}"
+		ExecUtil.execCmd(exec_cmd, ".")
+
+		return outputJarPath
+	end
+
+	def self.disassembleClass(classesDir, outputPath, execTimeout)
+		exec_cmd = ""
+		if DEF_DISASM.include?("jad") then
+			exec_cmd = "#{Shellwords.escape(DEF_DISASM)} -r -o -sjava -d#{Shellwords.escape(outputPath)} **/*.class"
+			ExecUtil.getExecResultEachLineWithTimeout(exec_cmd, classesDir, execTimeout)
+		else
+			exec_cmd = "#{Shellwords.escape(DEF_DISASM)} -o #{Shellwords.escape(outputPath)} #{Shellwords.escape(classesDir)}"
+			ExecUtil.getExecResultEachLineWithTimeout(exec_cmd, ".", execTimeout)
+		end
+
+	end
 end
 
 class ApkDisasmExecutor < TaskAsync
 	DEF_ANDROID_MANIFEST = "AndroidManifest.xml"
-	DEF_CLASSES = "classes.dex"
+	DEF_CLASSES = "classes*.dex"
+	DEF_CLASSES_REGEXP = "classes.*\.dex"
 	DEF_RESOURCES = "res/*"
 	DEF_SOURCE = "src"
 
@@ -52,7 +81,7 @@ class ApkDisasmExecutor < TaskAsync
 		super("ApkDisasmExecutor #{apkName}")
 		@apkName = apkName
 		@verbose = options[:verbose]
-		@outputDirectory = "#{options[:outputDirectory]}/#{FileUtil.getFilenameFromPath(@apkName)}"
+		@outputDirectory = "#{options[:outputDirectory]}/#{FileUtil.getFilenameFromPathWithoutExt(@apkName)}"
 
 		@manifest = options[:manifest]
 		@resource = options[:resource]
@@ -96,8 +125,27 @@ class ApkDisasmExecutor < TaskAsync
 			# create stat info. as tombstone
 
 			# disassemble .class to .cjava and file output
+			if @source then
+				ApkUtil.extractArchive(@apkName, @outputDirectory, DEF_CLASSES) if !@extractAll
+				classesDexPath = "#{@outputDirectory}/#{DEF_CLASSES}"
+				classDexPaths = []
+				FileUtil.iteratePath( FileUtil.getDirectoryFromPath( classesDexPath ), DEF_CLASSES_REGEXP, classDexPaths, true, false )
+				classDexPaths.each do | aClassDexPath |
+					convertedClassesDexPath = ApkUtil.convertDex2Jar( aClassDexPath, @outputDirectory )
+					if File.exist?( convertedClassesDexPath ) then
+						tmpExtractedClassesPath = "#{@outputDirectory}/#{FileUtil.getFilenameFromPathWithoutExt( convertedClassesDexPath )}"
+						ApkUtil.extractArchive( convertedClassesDexPath, tmpExtractedClassesPath )
+						FileUtils.rm_f( convertedClassesDexPath )
+						if FileTest.directory?( tmpExtractedClassesPath ) then
+							disassembledSrc = "#{@outputDirectory}/#{DEF_SOURCE}"
+							ApkUtil.disassembleClass( tmpExtractedClassesPath, disassembledSrc, @execTimeout )
+							FileUtils.rm_rf( tmpExtractedClassesPath )
+						end
+					end
+					FileUtils.rm_rf( aClassDexPath ) if !@extractAll
+				end
+			end
 		end
-
 
 		_doneTask()
 	end
@@ -135,6 +183,11 @@ OptionParser.new do |opts|
 
 	opts.on("-m", "--enableManifest", "Enable to extract plain AndroidManifest.xml") do
 		options[:manifest] = true
+	end
+
+
+	opts.on("-s", "--enableSource", "Enable to disassemble src from classes.dex") do
+		options[:source] = true
 	end
 
 	opts.on("-x", "--extractAll", "Enable to extract all in the apk") do

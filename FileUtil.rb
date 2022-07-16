@@ -20,7 +20,11 @@ class FileUtil
 
 		path = ""
 		paths.each do |aPath|
-			path += "/"+aPath
+			if !path.empty? then
+				path += "/"+aPath
+			else
+				path = aPath
+			end
 			Dir.mkdir(path) if !Dir.exist?(path)
 		end
 	end
@@ -75,13 +79,23 @@ class FileUtil
 
 	def self.getFilenameFromPath(path)
 		pos = path.rindex("/")
-		path = pos ? path.slice(pos+1, path.length-pos) : nil
+		path = pos ? path.slice(pos+1, path.length-pos) : path
+		return path
+	end
+
+	def self.getFilenameFromPathWithoutExt(path)
+		path = getFilenameFromPath(path)
+		pos = path.to_s.rindex(".")
+		path = pos ? path.slice(0, pos) : path
 		return path
 	end
 
 	def self.getDirectoryFromPath(path)
 		pos = path.rindex("/")
-		path = pos ? path.slice(0, pos-1) : nil
+		path = pos ? path.slice(0, pos) : path
+		while( path.end_with?("/") ) do
+			path = path.slice( 0, path.length-1 )
+		end
 		return path
 	end
 
