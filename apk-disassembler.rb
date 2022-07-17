@@ -121,6 +121,16 @@ class ApkDisasmExecutor < TaskAsync
 			end
 
 			# convert binary xml in res/ to plain xml
+			if @resource then
+				ApkUtil.extractArchive(@apkName, @outputDirectory, DEF_RESOURCES) if !@extractAll
+				resourcePath="#{@outputDirectory}/res"
+				if FileTest.directory?(resourcePath) then
+					binaryXmlPaths = FileUtil.getRegExpFilteredFiles(resourcePath, "\.xml$")
+					binaryXmlPaths.each do |aBinaryXml|
+						_convertBinaryXmlToPlain(aBinaryXml)
+					end
+				end
+			end
 
 			# create stat info. as tombstone
 
@@ -181,13 +191,16 @@ OptionParser.new do |opts|
 		options[:verbose] = true
 	end
 
+	opts.on("-s", "--enableSource", "Enable to disassemble src from classes.dex") do
+		options[:source] = true
+	end
+
 	opts.on("-m", "--enableManifest", "Enable to extract plain AndroidManifest.xml") do
 		options[:manifest] = true
 	end
 
-
-	opts.on("-s", "--enableSource", "Enable to disassemble src from classes.dex") do
-		options[:source] = true
+	opts.on("-r", "--enableResource", "Enable to extract plain xml in res/") do
+		options[:resource] = true
 	end
 
 	opts.on("-x", "--extractAll", "Enable to extract all in the apk") do
