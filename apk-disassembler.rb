@@ -205,6 +205,9 @@ OptionParser.new do |opts|
 
 	opts.on("-x", "--extractAll", "Enable to extract all in the apk") do
 		options[:extractAll] = true
+		options[:manifest] = true
+		options[:resource] = true
+		options[:source] = true
 	end
 end.parse!
 
