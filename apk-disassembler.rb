@@ -66,7 +66,19 @@ class ApkUtil
 			exec_cmd = "#{Shellwords.escape(DEF_DISASM)} -o #{Shellwords.escape(outputPath)} #{Shellwords.escape(classesDir)}"
 			ExecUtil.getExecResultEachLineWithTimeout(exec_cmd, ".", execTimeout)
 		end
+	end
 
+	DEF_TOMBSTONE="tombstone.txt"
+	DEF_TOMBSTONE_FILESIZE="fileSize"
+	DEF_TOMBSTONE_APKNAME="apkName"
+
+	def self.dumpTombstone(apkPath, tombstonePath)
+		if File.exist?(apkPath) then
+			buf = []
+			buf << "#{DEF_TOMBSTONE_FILESIZE}:#{File.size(apkPath)}"
+			buf << "#{DEF_TOMBSTONE_APKNAME}:#{FileUtil.getFilenameFromPath(apkPath)}"
+			FileUtil.writeFile("#{tombstonePath}/#{DEF_TOMBSTONE}", buf)
+		end
 	end
 end
 
@@ -133,8 +145,11 @@ class ApkDisasmExecutor < TaskAsync
 			end
 
 			# create stat info. as tombstone
+			if @tombstone then
+				ApkUtil.dumpTombstone(@apkName, @outputDirectory)
+			end
 
-			# disassemble .class to .cjava and file output
+			# disassemble .class to .java and file output
 			if @source then
 				ApkUtil.extractArchive(@apkName, @outputDirectory, DEF_CLASSES) if !@extractAll
 				classesDexPath = "#{@outputDirectory}/#{DEF_CLASSES}"
@@ -203,10 +218,15 @@ OptionParser.new do |opts|
 		options[:resource] = true
 	end
 
+	opts.on("-t", "--enableTombstone", "Enable to output Tombstone") do
+		options[:tombstone] = true
+	end
+
 	opts.on("-x", "--extractAll", "Enable to extract all in the apk") do
 		options[:extractAll] = true
 		options[:manifest] = true
 		options[:resource] = true
+		options[:tombstone] = true
 		options[:source] = true
 	end
 end.parse!
