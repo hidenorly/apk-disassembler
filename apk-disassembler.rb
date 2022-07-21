@@ -17,11 +17,11 @@
 require 'optparse'
 require 'date'
 require 'rexml/document'
-require "./TaskManager"
-require "./FileUtil"
+require_relative "TaskManager"
+require_relative "FileUtil"
 require "FileUtils"
-require "./StrUtil"
-require "./ExecUtil"
+require_relative "StrUtil"
+require_relative "ExecUtil"
 require 'shellwords'
 
 class ApkUtil
@@ -40,7 +40,7 @@ class ApkUtil
 	def self.convertedFromBinaryXmlToPlainXml(binaryXmlPath, outputPath)
 		exec_cmd = "java -jar #{Shellwords.escape(DEF_XMLPRINTER)} #{Shellwords.escape(binaryXmlPath)} > #{Shellwords.escape(outputPath)} 2>/dev/null"
 
-		ExecUtil.execCmd(exec_cmd, FileUtil.getDirectoryFromPath(binaryXmlPath), false)
+		ExecUtil.execCmd(exec_cmd, ".", false)
 	end
 
 	def self.convertDex2Jar(dexPath, outputJarDir)
@@ -71,12 +71,26 @@ class ApkUtil
 	DEF_TOMBSTONE="tombstone.txt"
 	DEF_TOMBSTONE_FILESIZE="fileSize"
 	DEF_TOMBSTONE_APKNAME="apkName"
+	DEF_TOMBSTONE_SIGNATURE="signature"
 
-	def self.dumpTombstone(apkPath, tombstonePath)
+	def self.getSignatureFingerprint(apkPath)
+		result = nil
+		if File.exist?(apkPath) then
+			exec_cmd = "list-apk-signature.rb #{Shellwords.escape(apkPath)}"
+			result = ExecUtil.getExecResultEachLine(exec_cmd)
+			if result.length then
+				result = result[0].to_s
+			end
+		end
+		return result
+	end
+
+	def self.dumpTombstone(apkPath, tombstonePath, enableSign=false)
 		if File.exist?(apkPath) then
 			buf = []
 			buf << "#{DEF_TOMBSTONE_FILESIZE}:#{File.size(apkPath)}"
 			buf << "#{DEF_TOMBSTONE_APKNAME}:#{FileUtil.getFilenameFromPath(apkPath)}"
+			buf << "#{DEF_TOMBSTONE_SIGNATURE}:#{getSignatureFingerprint(apkPath)}" if enableSign
 			FileUtil.writeFile("#{tombstonePath}/#{DEF_TOMBSTONE}", buf)
 		end
 	end
@@ -102,6 +116,7 @@ class ApkDisasmExecutor < TaskAsync
 		@extractAll = options[:extractAll]
 
 		@execTimeout = options[:execTimeout]
+		@enableSign = options[:tombstoneSign]
 	end
 
 	def _convertBinaryXmlToPlain(binaryXmlPath)
@@ -146,7 +161,7 @@ class ApkDisasmExecutor < TaskAsync
 
 			# create stat info. as tombstone
 			if @tombstone then
-				ApkUtil.dumpTombstone(@apkName, @outputDirectory)
+				ApkUtil.dumpTombstone(@apkName, @outputDirectory, @enableSign)
 			end
 
 			# disassemble .class to .java and file output
@@ -186,6 +201,7 @@ options = {
 	:source => false,
 	:extractAll => false,
 	:tombstone=>false,
+	:tombstoneSign=>false,
 	:execTimeout=>10*60, # 10 minutes
 	:numOfThreads => TaskManagerAsync.getNumberOfProcessor()
 }
@@ -222,11 +238,16 @@ OptionParser.new do |opts|
 		options[:tombstone] = true
 	end
 
+	opts.on("-t", "--enableApkSignatureTombstone", "Enable to output apk signature to Tombstone") do
+		options[:tombstoneSign] = true
+	end
+
 	opts.on("-x", "--extractAll", "Enable to extract all in the apk") do
 		options[:extractAll] = true
 		options[:manifest] = true
 		options[:resource] = true
 		options[:tombstone] = true
+		options[:tombstoneSign] = true
 		options[:source] = true
 	end
 end.parse!
