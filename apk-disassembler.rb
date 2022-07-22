@@ -24,6 +24,14 @@ require_relative "StrUtil"
 require_relative "ExecUtil"
 require 'shellwords'
 
+class LibUtil
+	def self.reportExportedSymbols(libPath, outputFilePath)
+		exec_cmd = "objdump -T --demangle #{Shellwords.escape(libPath)} > #{Shellwords.escape(outputFilePath)}"
+
+		ExecUtil.execCmd(exec_cmd, ".", false)
+	end
+end
+
 class ApkUtil
 	DEF_XMLPRINTER = ENV["PATH_AXMLPRINTER"] ? ENV["PATH_AXMLPRINTER"] : "AXMLPrinter2.jar"
 	DEF_DEX2JAR = ENV["PATH_DEX2JAR"] ? ENV["PATH_DEX2JAR"] : "d2j-dex2jar.sh"
@@ -100,6 +108,8 @@ class ApkDisasmExecutor < TaskAsync
 	DEF_ANDROID_MANIFEST = "AndroidManifest.xml"
 	DEF_CLASSES = "classes*.dex"
 	DEF_CLASSES_REGEXP = "classes.*\.dex"
+	DEF_LIBS_PATH = ["lib", "lib64"]
+	DEF_LIBS_REGEXP = ".*\.so"
 	DEF_RESOURCES = "res/*"
 	DEF_SOURCE = "src"
 
@@ -109,14 +119,15 @@ class ApkDisasmExecutor < TaskAsync
 		@verbose = options[:verbose]
 		@outputDirectory = "#{options[:outputDirectory]}/#{FileUtil.getFilenameFromPathWithoutExt(@apkName)}"
 
+		@extractAll = options[:extractAll]
+		@execTimeout = options[:execTimeout]
+
 		@manifest = options[:manifest]
 		@resource = options[:resource]
 		@source = options[:source]
 		@tombstone = options[:tombstone]
-		@extractAll = options[:extractAll]
-
-		@execTimeout = options[:execTimeout]
 		@enableSign = options[:tombstoneSign]
+		@enableLib = options[:library]
 	end
 
 	def _convertBinaryXmlToPlain(binaryXmlPath)
@@ -137,7 +148,7 @@ class ApkDisasmExecutor < TaskAsync
 			ApkUtil.extractArchive(@apkName, @outputDirectory)
 		end
 
-		if @manifest || @resource || @source || @tombstone then
+		if @manifest || @resource || @source || @tombstone || @enableLib then
 			# convert binary AndroidManifest.xml to plain xml
 			if @manifest then
 				ApkUtil.extractArchive(@apkName, @outputDirectory, DEF_ANDROID_MANIFEST) if !@extractAll
@@ -185,6 +196,26 @@ class ApkDisasmExecutor < TaskAsync
 					FileUtils.rm_rf( aClassDexPath ) if !@extractAll
 				end
 			end
+
+			# extact lib
+			if @enableLib then
+				if !@extractAll then
+					DEF_LIBS_PATH.each do | aLibPath |
+						outputPath = "#{aLibPath}/*"
+						ApkUtil.extractArchive(@apkName, @outputDirectory, outputPath)
+					end
+				end
+				DEF_LIBS_PATH.each do | aLibPath |
+					libPath = "#{@outputDirectory}/#{aLibPath}"
+					if FileTest.directory?(libPath) then
+						soPaths = FileUtil.getRegExpFilteredFiles(libPath, DEF_LIBS_REGEXP)
+						soPaths.each do |aSoPath|
+							reportPath = "#{FileUtil.getDirectoryFromPath(aSoPath)}/#{FileUtil.getFilenameFromPathWithoutExt(aSoPath)}-symbols.txt"
+							LibUtil.reportExportedSymbols( aSoPath, reportPath )
+						end
+					end
+				end
+			end
 		end
 
 		_doneTask()
@@ -196,13 +227,14 @@ end
 options = {
 	:verbose => false,
 	:outputDirectory => ".",
+	:extractAll => false,
+	:execTimeout => 10*60, # 10 minutes
 	:manifest => false,
 	:resource => false,
 	:source => false,
-	:extractAll => false,
-	:tombstone=>false,
-	:tombstoneSign=>false,
-	:execTimeout=>10*60, # 10 minutes
+	:tombstone => false,
+	:tombstoneSign => false,
+	:library => false,
 	:numOfThreads => TaskManagerAsync.getNumberOfProcessor()
 }
 
@@ -242,6 +274,10 @@ OptionParser.new do |opts|
 		options[:tombstoneSign] = true
 	end
 
+	opts.on("-l", "--enableLibAnalysis", "Enable to native library analysis") do
+		options[:library] = true
+	end
+
 	opts.on("-x", "--extractAll", "Enable to extract all in the apk") do
 		options[:extractAll] = true
 		options[:manifest] = true
@@ -249,6 +285,7 @@ OptionParser.new do |opts|
 		options[:tombstone] = true
 		options[:tombstoneSign] = true
 		options[:source] = true
+		options[:library] = true
 	end
 end.parse!
 
@@ -256,7 +293,7 @@ if (ARGV.length < 1) then
 	exit(-1)
 end
 
-if !options[:manifest] && !options[:resource] && !options[:source] && !options[:tombstone] && !options[:extractAll] then
+if !options[:manifest] && !options[:resource] && !options[:source] && !options[:tombstone] && !options[:extractAll] && !options[:library] then
 	exit(-1)
 end
 
