@@ -128,6 +128,7 @@ class ApkDisasmExecutor < TaskAsync
 		@tombstone = options[:tombstone]
 		@enableSign = options[:tombstoneSign]
 		@enableLib = options[:library]
+		@abi = options[:abi].to_s.split(",")
 	end
 
 	def _convertBinaryXmlToPlain(binaryXmlPath)
@@ -138,6 +139,18 @@ class ApkDisasmExecutor < TaskAsync
 		ApkUtil.convertedFromBinaryXmlToPlainXml(tmpOut1, tmpOut2)
 		FileUtils.rm_f(tmpOut1) if File.exist?(tmpOut1)
 		FileUtils.mv(tmpOut2, tmpOut1) if File.exist?(tmpOut2)
+	end
+
+	def _isCompatibleAbi( path )
+		result = false
+		path = path.to_s
+		@abi.each do |anAbi|
+			if path.include?( anAbi ) then
+				result = true
+				break
+			end
+		end
+		return result
 	end
 
 	def execute
@@ -210,8 +223,10 @@ class ApkDisasmExecutor < TaskAsync
 					if FileTest.directory?(libPath) then
 						soPaths = FileUtil.getRegExpFilteredFiles(libPath, DEF_LIBS_REGEXP)
 						soPaths.each do |aSoPath|
-							reportPath = "#{FileUtil.getDirectoryFromPath(aSoPath)}/#{FileUtil.getFilenameFromPathWithoutExt(aSoPath)}-symbols.txt"
-							LibUtil.reportExportedSymbols( aSoPath, reportPath )
+							if _isCompatibleAbi( aSoPath ) then
+								reportPath = "#{FileUtil.getDirectoryFromPath(aSoPath)}/#{FileUtil.getFilenameFromPathWithoutExt(aSoPath)}-symbols.txt"
+								LibUtil.reportExportedSymbols( aSoPath, reportPath )
+							end
 						end
 					end
 				end
@@ -235,6 +250,7 @@ options = {
 	:tombstone => false,
 	:tombstoneSign => false,
 	:library => false,
+	:abi => "arm64-v8a,armeabi-v7a",
 	:numOfThreads => TaskManagerAsync.getNumberOfProcessor()
 }
 
@@ -276,6 +292,10 @@ OptionParser.new do |opts|
 
 	opts.on("-l", "--enableLibAnalysis", "Enable to native library analysis") do
 		options[:library] = true
+	end
+
+	opts.on("-a", "--abi=", "Specify abi for enableLibAnalysis default:#{options[:abi]}") do |abi|
+		options[:abi] = abi
 	end
 
 	opts.on("-x", "--extractAll", "Enable to extract all in the apk") do
