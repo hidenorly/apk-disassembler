@@ -226,6 +226,9 @@ class ApkDisasmExecutor < TaskAsync
 							if _isCompatibleAbi( aSoPath ) then
 								reportPath = "#{FileUtil.getDirectoryFromPath(aSoPath)}/#{FileUtil.getFilenameFromPathWithoutExt(aSoPath)}-symbols.txt"
 								LibUtil.reportExportedSymbols( aSoPath, reportPath )
+							else
+								# this is not intended abi's shared object
+								FileUtils.rm_f( aSoPath ) if !@extractAll
 							end
 						end
 					end
