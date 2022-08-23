@@ -19,7 +19,7 @@ require 'date'
 require 'rexml/document'
 require_relative "TaskManager"
 require_relative "FileUtil"
-require "FileUtils"
+require "fileutils"
 require_relative "StrUtil"
 require_relative "ExecUtil"
 require 'shellwords'
@@ -79,6 +79,7 @@ class ApkUtil
 	DEF_TOMBSTONE="tombstone.txt"
 	DEF_TOMBSTONE_FILESIZE="fileSize"
 	DEF_TOMBSTONE_APKNAME="apkName"
+	DEF_TOMBSTONE_APKPATH="apkPath"
 	DEF_TOMBSTONE_SIGNATURE="signature"
 
 	def self.getSignatureFingerprint(apkPath)
@@ -93,12 +94,36 @@ class ApkUtil
 		return result
 	end
 
-	def self.dumpTombstone(apkPath, tombstonePath, enableSign=false)
+	DEF_DEPLOY_BASE_PATH = [
+		"system/",
+		"system_ext/",
+		"product/",
+		"oem/",
+		"vendor/",
+		"odm/",
+	]
+
+	def self.getApkDeployPath(apkPath)
+		result = apkPath
+
+		DEF_DEPLOY_BASE_PATH.each do | aDeployBasePath |
+			pos = apkPath.index( aDeployBasePath )
+			if pos then
+				result = apkPath.slice( pos, apkPath.length )
+				break
+			end
+		end
+
+		return result
+	end
+
+	def self.dumpTombstone(apkPath, tombstonePath, enableSign=false, enableApkPath=false)
 		if File.exist?(apkPath) then
 			buf = []
 			buf << "#{DEF_TOMBSTONE_FILESIZE}:#{File.size(apkPath)}"
 			buf << "#{DEF_TOMBSTONE_APKNAME}:#{FileUtil.getFilenameFromPath(apkPath)}"
 			buf << "#{DEF_TOMBSTONE_SIGNATURE}:#{getSignatureFingerprint(apkPath)}" if enableSign
+			buf << "#{DEF_TOMBSTONE_APKPATH}:#{getApkDeployPath(apkPath)}" if enableApkPath
 			FileUtil.writeFile("#{tombstonePath}/#{DEF_TOMBSTONE}", buf)
 		end
 	end
@@ -127,6 +152,7 @@ class ApkDisasmExecutor < TaskAsync
 		@source = options[:source]
 		@tombstone = options[:tombstone]
 		@enableSign = options[:tombstoneSign]
+		@enableApkPath = options[:tombstoneApkPath]
 		@enableLib = options[:library]
 		@abi = options[:abi].to_s.split(",")
 	end
@@ -185,7 +211,7 @@ class ApkDisasmExecutor < TaskAsync
 
 			# create stat info. as tombstone
 			if @tombstone then
-				ApkUtil.dumpTombstone(@apkName, @outputDirectory, @enableSign)
+				ApkUtil.dumpTombstone(@apkName, @outputDirectory, @enableSign, @enableApkPath)
 			end
 
 			# disassemble .class to .java and file output
@@ -252,6 +278,7 @@ options = {
 	:source => false,
 	:tombstone => false,
 	:tombstoneSign => false,
+	:tombstoneApkPath => false,
 	:library => false,
 	:abi => "arm64-v8a,armeabi-v7a",
 	:numOfThreads => TaskManagerAsync.getNumberOfProcessor()
@@ -289,8 +316,12 @@ OptionParser.new do |opts|
 		options[:tombstone] = true
 	end
 
-	opts.on("-t", "--enableApkSignatureTombstone", "Enable to output apk signature to Tombstone") do
+	opts.on("-f", "--enableApkSignatureTombstone", "Enable to output apk signature to Tombstone") do
 		options[:tombstoneSign] = true
+	end
+
+	opts.on("-p", "--enableApkPathTombstone", "Enable to output apk path to Tombstone") do
+		options[:tombstoneApkPath] = true
 	end
 
 	opts.on("-l", "--enableLibAnalysis", "Enable to native library analysis") do
@@ -307,6 +338,7 @@ OptionParser.new do |opts|
 		options[:resource] = true
 		options[:tombstone] = true
 		options[:tombstoneSign] = true
+		options[:tombstoneApkPath] = true
 		options[:source] = true
 		options[:library] = true
 	end
@@ -341,4 +373,3 @@ apkPaths.each do |aTarget|
 end
 taskMan.executeAll()
 taskMan.finalize()
-
