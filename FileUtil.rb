@@ -129,7 +129,8 @@ class FileUtil
 		if path && FileTest.exist?(path) then
 			fileReader = File.open(path)
 			if fileReader then
-				result = StrUtil.ensureUtf8(fileReader.read)
+				buf = fileReader.read
+				result = StrUtil.ensureUtf8(buf) if buf.valid_encoding?
 				fileReader.close
 			end
 		end

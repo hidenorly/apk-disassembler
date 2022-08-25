@@ -45,7 +45,7 @@ class ExecUtil
 		return result
 	end
 
-	def self.getExecResultEachLine(command, execPath=".", enableStderr=true)
+	def self.getExecResultEachLine(command, execPath=".", enableStderr=true, enableStrip=true, enableMultiLine=true)
 		result = []
 
 		if File.directory?(execPath) then
@@ -54,7 +54,9 @@ class ExecUtil
 
 			IO.popen(exec_cmd, "r", :chdir=>execPath) {|io|
 				while !io.eof? do
-					result << StrUtil.ensureUtf8(io.readline).strip
+					aLine = StrUtil.ensureUtf8(io.readline)
+					aLine.strip! if enableStrip
+					result << aLine
 				end
 				io.close()
 			}
@@ -62,7 +64,6 @@ class ExecUtil
 
 		return result
 	end
-
 
 	def self.getExecResultEachLineWithTimeout(exec_cmd, execPath=".", timeOutSec=3600, enableStderr=true, enableStrip=true)
 		result = []
