@@ -265,7 +265,14 @@ class AppAnalyzerExecutor < TaskAsync
 		result[:imports] = codeAnalysis[:imports] if !codeAnalysis[:imports].empty?
 
 		if ( result && result[:packageName] && @resultCallback!=nil ) then
-			@resultCallback.call(result)
+			@resultCallback.call(result) if _matchFilter?(result[:packageName],		@options[:filterPackageName]) &&
+											_matchFilter?(result[:sharedUserId],	@options[:filterSharedUid]) &&
+											_matchFilter?(result[:targetSdkVersion],@options[:filterTargetSdk]) &&
+											_matchFilter?(result[:persistent],		@options[:filterPersistent]) &&
+											_matchFilter?(result[:usesPermissions],	@options[:filterPermissions]) &&
+											_matchFilter?(result[:usesLibraries],	@options[:filterLibraries]) &&
+											_matchFilter?(result[:usesFeatures],	@options[:filterFeatures]) &&
+											_matchFilter?(result[:broadcastIntents],@options[:filterBroadcastIntents])
 		end
 
 		_doneTask()
@@ -424,6 +431,14 @@ options = {
 	:outputSections => "packageName|apkPath|sharedUserId|signature|targetSdkVersion|persistent|usesPermissions|usesLibraries|usesFeatures|broadcastIntents|apkSize|imports",
 	:importExcludes => AndroidAnalyzeUtil::DEF_ANDROID_EXECLUDE,
 	:importsMatch => nil,
+	:filterPackageName => nil,
+	:filterSharedUid => nil,
+	:filterTargetSdk => nil,
+	:filterPersistent => nil,
+	:filterPermissions => nil,
+	:filterLibraries => nil,
+	:filterFeatures => nil,
+	:filterBroadcastIntents => nil,
 	:numOfThreads => TaskManagerAsync.getNumberOfProcessor()
 }
 
@@ -454,6 +469,38 @@ OptionParser.new do |opts|
 
 	opts.on("-i", "--importsMatch=", "Specify output sections (default:#{options[:importsMatch]})") do |importsMatch|
 		options[:importsMatch] = importsMatch
+	end
+
+	opts.on("-n", "--filterPackageName=", "Filter for PackageName") do |filterPackageName|
+		options[:filterPackageName] = filterPackageName
+	end
+
+	opts.on("-u", "--filterSharedUid=", "Filter for SharedUserId") do |filterSharedUid|
+		options[:filterSharedUid] = filterSharedUid
+	end
+
+	opts.on("-t", "--filterTargetSdk=", "Filter for TargetSdkVersion") do |filterTargetSdk|
+		options[:filterTargetSdk] = filterTargetSdk
+	end
+
+	opts.on("-p", "--filterPersistent=", "Filter for persistent") do |filterPersistent|
+		options[:filterPersistent] = filterPersistent
+	end
+
+	opts.on("-m", "--filterPermissions=", "Filter for uses-permission") do |filterPermissions|
+		options[:filterPermissions] = filterPermissions
+	end
+
+	opts.on("-l", "--filterLibraries=", "Filter for uses-library") do |filterLibraries|
+		options[:filterLibraries] = filterLibraries
+	end
+
+	opts.on("-f", "--filterFeatures=", "Filter for uses-feature") do |filterFeatures|
+		options[:filterFeatures] = filterFeatures
+	end
+
+	opts.on("-b", "--filterBroadcastIntents=", "Filter for Broadcast Intents") do |filterBroadcastIntents|
+		options[:filterBroadcastIntents] = filterBroadcastIntents
 	end
 
 	opts.on("-s", "--outputSections=", "Specify output sections (default:#{options[:outputSections]})") do |outputSections|
