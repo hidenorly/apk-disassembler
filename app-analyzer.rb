@@ -272,7 +272,10 @@ class AppAnalyzerExecutor < TaskAsync
 											_matchFilter?(result[:usesPermissions],	@options[:filterPermissions]) &&
 											_matchFilter?(result[:usesLibraries],	@options[:filterLibraries]) &&
 											_matchFilter?(result[:usesFeatures],	@options[:filterFeatures]) &&
-											_matchFilter?(result[:broadcastIntents],@options[:filterBroadcastIntents])
+											_matchFilter?(result[:broadcastIntents],@options[:filterBroadcastIntents]) &&
+											(!result.has_key?("apkSize") || _matchFilter?(result[:apkSize], @options[:filterApkSize])) &&
+											(!result.has_key?("apkPath") || _matchFilter?(result[:apkPath], @options[:filterApkPath])) &&
+											(!result.has_key?("signature") || _matchFilter?(result[:signature], @options[:filterSignature]))
 		end
 
 		_doneTask()
@@ -439,6 +442,9 @@ options = {
 	:filterLibraries => nil,
 	:filterFeatures => nil,
 	:filterBroadcastIntents => nil,
+	:filterApkSize => ">0",
+	:filterSignature => nil,
+	:filterApkPath => nil,
 	:numOfThreads => TaskManagerAsync.getNumberOfProcessor()
 }
 
@@ -501,6 +507,14 @@ OptionParser.new do |opts|
 
 	opts.on("-b", "--filterBroadcastIntents=", "Filter for Broadcast Intents") do |filterBroadcastIntents|
 		options[:filterBroadcastIntents] = filterBroadcastIntents
+	end
+
+	opts.on("", "--filterSignature=", "Filter for signature finger print") do |filterSignature|
+		options[:filterSignature] = filterSignature
+	end
+
+	opts.on("", "--filterApkPath=", "Filter for apkPath") do |filterApkPath|
+		options[:filterApkPath] = filterApkPath
 	end
 
 	opts.on("-s", "--outputSections=", "Specify output sections (default:#{options[:outputSections]})") do |outputSections|
