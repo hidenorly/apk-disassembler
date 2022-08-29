@@ -23,6 +23,7 @@ require "fileutils"
 require_relative "StrUtil"
 require_relative "ExecUtil"
 require 'shellwords'
+require 'set'
 
 class LibUtil
 	def self.reportExportedSymbols(libPath, outputFilePath)
@@ -81,6 +82,7 @@ class ApkUtil
 	DEF_TOMBSTONE_APKNAME="apkName"
 	DEF_TOMBSTONE_APKPATH="apkPath"
 	DEF_TOMBSTONE_SIGNATURE="signature"
+	DEF_TOMBSTONE_ABI="abi"
 
 	def self.getSignatureFingerprint(apkPath)
 		result = nil
@@ -117,13 +119,15 @@ class ApkUtil
 		return result
 	end
 
-	def self.dumpTombstone(apkPath, tombstonePath, enableSign=false, enableApkPath=false)
+	def self.dumpTombstone(apkPath, tombstonePath, enableSign=false, enableApkPath=false, supportedABIs=[])
 		if File.exist?(apkPath) then
 			buf = []
 			buf << "#{DEF_TOMBSTONE_FILESIZE}:#{File.size(apkPath)}"
 			buf << "#{DEF_TOMBSTONE_APKNAME}:#{FileUtil.getFilenameFromPath(apkPath)}"
 			buf << "#{DEF_TOMBSTONE_SIGNATURE}:#{getSignatureFingerprint(apkPath)}" if enableSign
 			buf << "#{DEF_TOMBSTONE_APKPATH}:#{getApkDeployPath(apkPath)}" if enableApkPath
+			buf << "#{DEF_TOMBSTONE_ABI}:#{ supportedABIs.join(",") }" if !supportedABIs.empty?
+
 			FileUtil.writeFile("#{tombstonePath}/#{DEF_TOMBSTONE}", buf)
 		end
 	end
@@ -153,6 +157,7 @@ class ApkDisasmExecutor < TaskAsync
 		@tombstone = options[:tombstone]
 		@enableSign = options[:tombstoneSign]
 		@enableApkPath = options[:tombstoneApkPath]
+		@enableAbi = options[:tombstoneAbi]
 		@enableLib = options[:library]
 		@abi = options[:abi].to_s.split(",")
 	end
@@ -167,16 +172,22 @@ class ApkDisasmExecutor < TaskAsync
 		FileUtils.mv(tmpOut2, tmpOut1) if File.exist?(tmpOut2)
 	end
 
-	def _isCompatibleAbi( path )
-		result = false
+	def _getCompatibleAbi( path )
+		result = nil
 		path = path.to_s
 		@abi.each do |anAbi|
-			if path.include?( anAbi ) then
-				result = true
+			pos = path.index( anAbi )
+			if pos then
+				result = path.slice( pos, anAbi.length )
 				break
 			end
 		end
 		return result
+	end
+
+	def _isCompatibleAbi( path )
+		result = _getCompatibleAbi( path )
+		return result ? true : false
 	end
 
 	def execute
@@ -209,9 +220,38 @@ class ApkDisasmExecutor < TaskAsync
 				end
 			end
 
+			supportedABIs = Set.new()
+			# extact lib
+			if @enableLib || @enableAbi then
+				if !@extractAll then
+					DEF_LIBS_PATH.each do | aLibPath |
+						outputPath = "#{aLibPath}/*"
+						ApkUtil.extractArchive(@apkName, @outputDirectory, outputPath)
+					end
+				end
+				DEF_LIBS_PATH.each do | aLibPath |
+					libPath = "#{@outputDirectory}/#{aLibPath}"
+					if FileTest.directory?(libPath) then
+						soPaths = FileUtil.getRegExpFilteredFiles(libPath, DEF_LIBS_REGEXP)
+						soPaths.each do |aSoPath|
+							if _isCompatibleAbi( aSoPath ) then
+								supportedABIs.add( _getCompatibleAbi( aSoPath ) )
+								if @enableLib then
+									reportPath = "#{FileUtil.getDirectoryFromPath(aSoPath)}/#{FileUtil.getFilenameFromPathWithoutExt(aSoPath)}-symbols.txt"
+									LibUtil.reportExportedSymbols( aSoPath, reportPath )
+								end
+							else
+								# this is not intended abi's shared object
+								FileUtils.rm_f( aSoPath ) if !@extractAll
+							end
+						end
+					end
+				end
+			end
+
 			# create stat info. as tombstone
 			if @tombstone then
-				ApkUtil.dumpTombstone(@apkName, @outputDirectory, @enableSign, @enableApkPath)
+				ApkUtil.dumpTombstone(@apkName, @outputDirectory, @enableSign, @enableApkPath, @enableAbi ? supportedABIs.to_a : [])
 			end
 
 			# disassemble .class to .java and file output
@@ -235,31 +275,6 @@ class ApkDisasmExecutor < TaskAsync
 					FileUtils.rm_rf( aClassDexPath ) if !@extractAll
 				end
 			end
-
-			# extact lib
-			if @enableLib then
-				if !@extractAll then
-					DEF_LIBS_PATH.each do | aLibPath |
-						outputPath = "#{aLibPath}/*"
-						ApkUtil.extractArchive(@apkName, @outputDirectory, outputPath)
-					end
-				end
-				DEF_LIBS_PATH.each do | aLibPath |
-					libPath = "#{@outputDirectory}/#{aLibPath}"
-					if FileTest.directory?(libPath) then
-						soPaths = FileUtil.getRegExpFilteredFiles(libPath, DEF_LIBS_REGEXP)
-						soPaths.each do |aSoPath|
-							if _isCompatibleAbi( aSoPath ) then
-								reportPath = "#{FileUtil.getDirectoryFromPath(aSoPath)}/#{FileUtil.getFilenameFromPathWithoutExt(aSoPath)}-symbols.txt"
-								LibUtil.reportExportedSymbols( aSoPath, reportPath )
-							else
-								# this is not intended abi's shared object
-								FileUtils.rm_f( aSoPath ) if !@extractAll
-							end
-						end
-					end
-				end
-			end
 		end
 
 		_doneTask()
@@ -279,8 +294,9 @@ options = {
 	:tombstone => false,
 	:tombstoneSign => false,
 	:tombstoneApkPath => false,
+	:tombstoneAbi => false,
 	:library => false,
-	:abi => "arm64-v8a,armeabi-v7a",
+	:abi => "arm64-v8a,armeabi-v7a,x86,x86_64",
 	:numOfThreads => TaskManagerAsync.getNumberOfProcessor()
 }
 
@@ -318,10 +334,17 @@ OptionParser.new do |opts|
 
 	opts.on("-f", "--enableApkSignatureTombstone", "Enable to output apk signature to Tombstone") do
 		options[:tombstoneSign] = true
+		options[:tombstone] = true
 	end
 
 	opts.on("-p", "--enableApkPathTombstone", "Enable to output apk path to Tombstone") do
 		options[:tombstoneApkPath] = true
+		options[:tombstone] = true
+	end
+
+	opts.on("", "--enableAbiTombstone", "Enable to output supported ABI to Tombstone") do
+		options[:tombstoneAbi] = true
+		options[:tombstone] = true
 	end
 
 	opts.on("-l", "--enableLibAnalysis", "Enable to native library analysis") do
@@ -339,6 +362,7 @@ OptionParser.new do |opts|
 		options[:tombstone] = true
 		options[:tombstoneSign] = true
 		options[:tombstoneApkPath] = true
+		options[:tombstoneAbi] = true
 		options[:source] = true
 		options[:library] = true
 	end
