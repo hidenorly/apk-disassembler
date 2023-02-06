@@ -355,6 +355,10 @@ OptionParser.new do |opts|
 		options[:abi] = abi
 	end
 
+	opts.on("-e", "--execTimeout=", "Specify timeout for external commands (default:#{options[:execTimeout]}) [sec]") do |execTimeout|
+		options[:execTimeout] = execTimeout.to_i
+	end
+
 	opts.on("-x", "--extractAll", "Enable to extract all in the apk") do
 		options[:extractAll] = true
 		options[:manifest] = true
