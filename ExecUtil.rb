@@ -12,16 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-require "./StrUtil"
+require_relative "StrUtil"
 require 'timeout'
 
 class ExecUtil
 	def self.execCmd(command, execPath=".", quiet=true)
+		result = false
 		if File.directory?(execPath) then
 			exec_cmd = command
 			exec_cmd += " > /dev/null 2>&1" if quiet && !exec_cmd.include?("> /dev/null")
-			system(exec_cmd, :chdir=>execPath)
+			result = system(exec_cmd, :chdir=>execPath)
 		end
+		return result
 	end
 
 	def self.hasResult?(command, execPath=".", enableStderr=true)

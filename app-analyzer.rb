@@ -1,6 +1,6 @@
 #!/usr/bin/ruby
 
-# Copyright 2022 hidenory
+# Copyright 2022, 2023 hidenory
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ require_relative "FileUtil"
 require "fileutils"
 require_relative "StrUtil"
 require_relative "ExecUtil"
+require_relative "Reporter"
 require 'shellwords'
 
 class AndroidAnalyzeUtil
@@ -290,147 +291,11 @@ def addResult(result)
 	}
 end
 
-class Reporter
-	def self.titleOut(title)
-		puts title
-	end
-
-	def self._getMaxLengthData(data)
-		result = !data.empty? ? data[0] : {}
-
-		data.each do |aData|
-			result = aData if aData.length > result.length
-		end
-
-		return result
-	end
-
-	def self._ensureFilteredHash(data, outputSections)
-		result = data
-
-		if outputSections then
-			result = {}
-
-			outputSections.each do |aKey|
-				found = false
-				data.each do |theKey, theVal|
-					if theKey.to_s.strip.start_with?(aKey) then
-						result[aKey] = theVal
-						found = true
-						break
-					end
-				end
-				result[aKey] = nil if !found
-			end
-		end
-
-		return result
-	end
-
-	def self.report(data, outputSections=nil)
-		outputSections = outputSections ? outputSections.split("|") : nil
-
-		if data.length then
-			keys = _getMaxLengthData(data) #data[0]
-			if keys.kind_of?(Hash) then
-				keys = _ensureFilteredHash(keys, outputSections)
-				_conv(keys, true, false, true)
-			elsif outputSections then
-				_conv(outputSections, true, false, true)
-			end
-
-			data.each do |aData|
-				aData = _ensureFilteredHash(aData, outputSections) if aData.kind_of?(Hash)
-				_conv(aData)
-			end
-		end
-	end
-
-	def self._conv(aData, keyOutput=false, valOutput=true, firstLine=false)
-		puts aData
-	end
-end
-
-class MarkdownReporter < Reporter
-	def self.titleOut(title)
-		puts "\# #{title}"
-		puts ""
-	end
-
-	def self.reportFilter(aLine)
-		if aLine.kind_of?(Array) then
-			tmp = ""
-			aLine.each do |aVal|
-				tmp = "#{tmp}#{!tmp.empty? ? " <br> " : ""}#{aVal}"
-			end
-			aLine = tmp
-		elsif aLine.is_a?(String) then
-			aLine = "[#{FileUtil.getFilenameFromPath(aLine)}](#{aLine})" if aLine.start_with?("http://")
-		end
-
-		return aLine
-	end
-
-	def self._conv(aData, keyOutput=false, valOutput=true, firstLine=false)
-		separator = "|"
-		aLine = separator
-		count = 0
-		if aData.kind_of?(Enumerable) then
-			if aData.kind_of?(Hash) then
-				aData.each do |aKey,theVal|
-					aLine = "#{aLine} #{aKey} #{separator}" if keyOutput
-					aLine = "#{aLine} #{reportFilter(theVal)} #{separator}" if valOutput
-					count = count + 1
-				end
-			elsif aData.kind_of?(Array) then
-				aData.each do |theVal|
-					aLine = "#{aLine} #{reportFilter(theVal)} #{separator}" if valOutput
-					count = count + 1
-				end
-			end
-			puts aLine
-			if firstLine && count then
-				aLine = "|"
-				for i in 1..count do
-					aLine = "#{aLine} :--- |"
-				end
-				puts aLine
-			end
-		else
-			puts "#{separator} #{reportFilter(aData)} #{separator}"
-		end
-	end
-end
-
-class CsvReporter < Reporter
-	def self.titleOut(title)
-		puts ""
-	end
-
-	def self._conv(aData, keyOutput=false, valOutput=true, firstLine=false)
-		aLine = ""
-		if aData.kind_of?(Enumerable) then
-			if aData.kind_of?(Hash) then
-				aData.each do |aKey,theVal|
-					aLine = "#{aLine!="" ? "#{aLine}," : ""}#{aKey}" if keyOutput
-					aLine = "#{aLine!="" ? "#{aLine}," : ""}#{theVal}" if valOutput
-				end
-			elsif aData.kind_of?(Array) then
-				aData.each do |theVal|
-					aLine = "#{aLine!="" ? "#{aLine}," : ""}#{theVal}" if valOutput
-				end
-			end
-			puts aLine
-		else
-			puts "#{aData}"
-		end
-	end
-end
-
 
 #---- main --------------------------
 options = {
 	:verbose => false,
+	:reportOutPath => nil,
 	:outputSections => "packageName|apkPath|sharedUserId|signature|targetSdkVersion|persistent|usesPermissions|usesLibraries|usesFeatures|broadcastIntents|apkSize|imports",
 	:importExcludes => AndroidAnalyzeUtil::DEF_ANDROID_EXECLUDE,
 	:importsMatch => nil,
@@ -460,6 +325,10 @@ OptionParser.new do |opts|
 
 	opts.on("-v", "--verbose", "Enable verbose status output") do
 		options[:verbose] = true
+	end
+
+	opts.on("-o", "--reportOutPath=", "Specify output path (stdout if not specified") do |reportOutPath|
+		options[:reportOutPath] = reportOutPath
 	end
 
 	opts.on("-r", "--reportFormat=", "Specify report format markdown or csv (default:markdown)") do |reportFormat|
@@ -555,6 +424,8 @@ $g_result.sort! do |a, b|
 	ret = a[:packageName].casecmp(b[:packageName])
 	ret == 0 ? a[:packageName] <=> b[:packageName] : ret
 end
+
+reporter = reporter.new( options[:reportOutPath] )
 
 reporter.titleOut("AndroidManifest.xml parse result")
 reporter.report($g_result, options[:outputSections])
