@@ -26,6 +26,29 @@ require_relative "Reporter"
 require 'shellwords'
 
 class AndroidAnalyzeUtil
+	def self.getArrayFromAttributeInXmlDoc(doc, path, defaultValue = [], attribute = "android:name")
+		result = []
+
+		path = "#{path}[@#{attribute}]" if !path.include?("[@") && !path.include?("]")
+
+		doc.elements.each(path) do |anElement|
+			result << anElement.attributes[attribute]
+		end
+
+		result.uniq!
+		result.sort!
+
+		result = defaultValue if result.empty?
+
+		return result
+	end
+
+	def self.getValueFromAttributeInXmlDoc(doc, path, defaultValue = nil, attribute = "android:name")
+		result = getArrayFromAttributeInXmlDoc(doc, path, defaultValue, attribute)
+		result = result[0] if result.kind_of?(Array)
+		return result
+	end
+
 	def self.parseAndroidManifest(manifestPath)
 		result = {
 			:packageName => nil,
@@ -34,6 +57,7 @@ class AndroidAnalyzeUtil
 			:persistent => false,
 			:usesPermissions => [],
 			:usesLibraries => [],
+			:usesNativeLibraries => [],
 			:usesFeatures => [],
 			:broadcastIntents => [],
 		}
@@ -50,55 +74,24 @@ class AndroidAnalyzeUtil
 				end
 
 				if doc then
-					# packagename
-					doc.elements.each("manifest[@package]") do |anElement|
-						result[:packageName] = anElement.attributes["package"]
-					end
+					result[:packageName] = getValueFromAttributeInXmlDoc(doc, "manifest", result[:packageName], "package")
+					result[:sharedUserId] = getValueFromAttributeInXmlDoc(doc, "manifest", result[:sharedUserId], "android:sharedUserId")
+					result[:targetSdkVersion] = getValueFromAttributeInXmlDoc(doc, "manifest/uses-sdk", result[:targetSdkVersion], "android:targetSdkVersion")
+					result[:persistent] = getValueFromAttributeInXmlDoc(doc, "//application", result[:persistent], "android:persistent")
 
-					# sharedUserId
-					doc.elements.each("manifest[@sharedUserId]") do |anElement|
-						result[:sharedUserId] = anElement.attributes["sharedUserId"]
-					end
-
-					# targetSdkVersion
-					doc.elements.each("manifest/uses-sdk[@targetSdkVersion]") do |anElement|
-						result[:targetSdkVersion] = anElement.attributes["targetSdkVersion"]
-					end
-
-					# persist
-					doc.elements.each("//application[@persistent]") do |anElement|
-						result[:persistent] = anElement.attributes["persistent"]
-					end
-
-					# uses-permissions
-					doc.elements.each("//uses-permission[@name]") do |anElement|
-						result[:usesPermissions] << anElement.attributes["name"]
-					end
-					result[:usesPermissions].uniq!
-					result[:usesPermissions].sort!
-
-					# uses-libraries
-					doc.elements.each("//uses-library[@name]") do |anElement|
-						result[:usesLibraries] << anElement.attributes["name"]
-					end
-					result[:usesLibraries].uniq!
-					result[:usesLibraries].sort!
+					result[:usesPermissions] = getArrayFromAttributeInXmlDoc(doc, "//uses-permission")
+					result[:usesLibraries] = getArrayFromAttributeInXmlDoc(doc, "//uses-library")
+					result[:usesNativeLibraries] = getArrayFromAttributeInXmlDoc(doc, "//uses-native-library")
+					result[:broadcastIntents] = getArrayFromAttributeInXmlDoc(doc, "//receiver/intent-filter/action")
 
 					# uses-features
-					doc.elements.each("//uses-feature[@name]") do |anElement|
+					doc.elements.each("//uses-feature[@android:name]") do |anElement|
 						if !anElement.attributes.has_key?("required") || anElement.attributes["required"].to_s.strip.downcase == "true" then 
 							result[:usesFeatures] << anElement.attributes["name"]
 						end
 					end
 					result[:usesFeatures].uniq!
 					result[:usesFeatures].sort!
-
-					# static broadcast receivers
-					doc.elements.each("//receiver/intent-filter/action[@name]") do |anElement|
-						result[:broadcastIntents] << anElement.attributes["name"]
-					end
-					result[:broadcastIntents].uniq!
-					result[:broadcastIntents].sort!
 				end
 			end
 		end
@@ -266,14 +259,15 @@ class AppAnalyzerExecutor < TaskAsync
 		result[:imports] = codeAnalysis[:imports] if !codeAnalysis[:imports].empty?
 
 		if ( result && result[:packageName] && @resultCallback!=nil ) then
-			@resultCallback.call(result) if _matchFilter?(result[:packageName],		@options[:filterPackageName]) &&
-											_matchFilter?(result[:sharedUserId],	@options[:filterSharedUid]) &&
-											_matchFilter?(result[:targetSdkVersion],@options[:filterTargetSdk]) &&
-											_matchFilter?(result[:persistent],		@options[:filterPersistent]) &&
-											_matchFilter?(result[:usesPermissions],	@options[:filterPermissions]) &&
-											_matchFilter?(result[:usesLibraries],	@options[:filterLibraries]) &&
-											_matchFilter?(result[:usesFeatures],	@options[:filterFeatures]) &&
-											_matchFilter?(result[:broadcastIntents],@options[:filterBroadcastIntents]) &&
+			@resultCallback.call(result) if _matchFilter?(result[:packageName],			@options[:filterPackageName]) &&
+											_matchFilter?(result[:sharedUserId],		@options[:filterSharedUid]) &&
+											_matchFilter?(result[:targetSdkVersion],	@options[:filterTargetSdk]) &&
+											_matchFilter?(result[:persistent],			@options[:filterPersistent]) &&
+											_matchFilter?(result[:usesPermissions],		@options[:filterPermissions]) &&
+											_matchFilter?(result[:usesLibraries],		@options[:filterLibraries]) &&
+											_matchFilter?(result[:usesNativeLibraries],	@options[:filterNativeLibraries]) &&
+											_matchFilter?(result[:usesFeatures],		@options[:filterFeatures]) &&
+											_matchFilter?(result[:broadcastIntents],	@options[:filterBroadcastIntents]) &&
 											(!result.has_key?("apkSize") || _matchFilter?(result[:apkSize], @options[:filterApkSize])) &&
 											(!result.has_key?("apkPath") || _matchFilter?(result[:apkPath], @options[:filterApkPath])) &&
 											(!result.has_key?("signature") || _matchFilter?(result[:signature], @options[:filterSignature]))
@@ -296,7 +290,7 @@ end
 options = {
 	:verbose => false,
 	:reportOutPath => nil,
-	:outputSections => "packageName|apkPath|sharedUserId|signature|targetSdkVersion|persistent|usesPermissions|usesLibraries|usesFeatures|broadcastIntents|apkSize|imports",
+	:outputSections => "packageName|apkPath|sharedUserId|signature|targetSdkVersion|persistent|usesPermissions|usesLibraries|usesNativeLibraries|usesFeatures|broadcastIntents|apkSize|imports",
 	:importExcludes => AndroidAnalyzeUtil::DEF_ANDROID_EXECLUDE,
 	:importsMatch => nil,
 	:filterPackageName => nil,
@@ -305,6 +299,7 @@ options = {
 	:filterPersistent => nil,
 	:filterPermissions => nil,
 	:filterLibraries => nil,
+	:filterNativeLibraries => nil,
 	:filterFeatures => nil,
 	:filterBroadcastIntents => nil,
 	:filterApkSize => ">0",
@@ -335,6 +330,8 @@ OptionParser.new do |opts|
 		case reportFormat.to_s.downcase
 		when "csv"
 			reporter = CsvReporter
+		when "xml"
+			reporter = XmlReporter
 		end
 	end
 
@@ -368,6 +365,10 @@ OptionParser.new do |opts|
 
 	opts.on("-l", "--filterLibraries=", "Filter for uses-library") do |filterLibraries|
 		options[:filterLibraries] = filterLibraries
+	end
+
+	opts.on("", "--filterNativeLibraries=", "Filter for uses-native-library") do |filterNativeLibraries|
+		options[:filterNativeLibraries] = filterNativeLibraries
 	end
 
 	opts.on("-f", "--filterFeatures=", "Filter for uses-feature") do |filterFeatures|
