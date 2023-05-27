@@ -33,10 +33,25 @@ class LibUtil
 	end
 end
 
-class ApkUtil
-	DEF_XMLPRINTER = ENV["PATH_AXMLPRINTER"] ? ENV["PATH_AXMLPRINTER"] : "AXMLPrinter2.jar"
+class JavaDisasm
 	DEF_DEX2JAR = ENV["PATH_DEX2JAR"] ? ENV["PATH_DEX2JAR"] : "d2j-dex2jar.sh"
 	DEF_DISASM = ENV["PATH_JAVADISASM"] ? ENV["PATH_JAVADISASM"] : "class2java.sh"
+
+	def self.disassembleClass(classesDir, outputPath, execTimeout)
+		exec_cmd = ""
+		if DEF_DISASM.include?("jad") then
+			exec_cmd = "#{Shellwords.escape(DEF_DISASM)} -r -o -sjava -d#{Shellwords.escape(outputPath)} **/*.class"
+			ExecUtil.getExecResultEachLineWithTimeout(exec_cmd, classesDir, execTimeout)
+		else
+			exec_cmd = "#{Shellwords.escape(DEF_DISASM)} -o #{Shellwords.escape(outputPath)} #{Shellwords.escape(classesDir)}"
+			ExecUtil.getExecResultEachLineWithTimeout(exec_cmd, ".", execTimeout)
+		end
+	end
+end
+
+
+class ApkUtil
+	DEF_XMLPRINTER = ENV["PATH_AXMLPRINTER"] ? ENV["PATH_AXMLPRINTER"] : "AXMLPrinter2.jar"
 
 	def self.extractArchive(archivePath, outputDir, specificFile=nil)
 		exec_cmd = "unzip -o -qq  #{Shellwords.escape(archivePath)}"
@@ -64,17 +79,6 @@ class ApkUtil
 		ExecUtil.execCmd(exec_cmd, ".")
 
 		return outputJarPath
-	end
-
-	def self.disassembleClass(classesDir, outputPath, execTimeout)
-		exec_cmd = ""
-		if DEF_DISASM.include?("jad") then
-			exec_cmd = "#{Shellwords.escape(DEF_DISASM)} -r -o -sjava -d#{Shellwords.escape(outputPath)} **/*.class"
-			ExecUtil.getExecResultEachLineWithTimeout(exec_cmd, classesDir, execTimeout)
-		else
-			exec_cmd = "#{Shellwords.escape(DEF_DISASM)} -o #{Shellwords.escape(outputPath)} #{Shellwords.escape(classesDir)}"
-			ExecUtil.getExecResultEachLineWithTimeout(exec_cmd, ".", execTimeout)
-		end
 	end
 
 	DEF_TOMBSTONE="tombstone.txt"
@@ -268,7 +272,7 @@ class ApkDisasmExecutor < TaskAsync
 						FileUtils.rm_f( convertedClassesDexPath )
 						if FileTest.directory?( tmpExtractedClassesPath ) then
 							disassembledSrc = "#{@outputDirectory}/#{DEF_SOURCE}"
-							ApkUtil.disassembleClass( tmpExtractedClassesPath, disassembledSrc, @execTimeout )
+							JavaDisasm.disassembleClass( tmpExtractedClassesPath, disassembledSrc, @execTimeout )
 							FileUtils.rm_rf( tmpExtractedClassesPath )
 						end
 					end
