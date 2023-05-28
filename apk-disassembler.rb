@@ -1,6 +1,6 @@
 #!/usr/bin/ruby
 
-# Copyright 2022 hidenory
+# Copyright 2022, 2023 hidenory
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,12 +34,27 @@ class LibUtil
 end
 
 class JavaDisasm
-	DEF_DEX2JAR = ENV["PATH_DEX2JAR"] ? ENV["PATH_DEX2JAR"] : "d2j-dex2jar.sh"
 	DEF_DISASM = ENV["PATH_JAVADISASM"] ? ENV["PATH_JAVADISASM"] : "class2java.sh"
 
-	def self.disassembleClass(classesDir, outputPath, execTimeout)
+	def self.isRequiredDexToJar(disAsmType=nil)
+		return false if DEF_DISASM.include?("jadx") || disAsmType=="jadx"
+		return true
+	end
+
+	def self.disassembleClass(classesDir, outputPath, execTimeout, classesDexPath=nil, disAsmType=nil)
 		exec_cmd = ""
-		if DEF_DISASM.include?("jad") then
+		if DEF_DISASM.include?("jadx") || disAsmType=="jadx" then
+			classFiles = []
+			classFiles = [classesDexPath] if classesDexPath && File.exist?(classesDexPath)
+			if classFiles.empty? then
+				classFiles = FileUtil.getRegExpFilteredFiles(classesDir, "\.class")
+			end
+			FileUtil.ensureDirectory(outputPath)
+			classFiles.each do |aClassFile|
+				exec_cmd = "#{Shellwords.escape(DEF_DISASM)} -ds #{Shellwords.escape(File.expand_path(outputPath))} #{Shellwords.escape(File.expand_path(aClassFile))}"
+				ExecUtil.execCmd(exec_cmd, FileUtil.getDirectoryFromPath(aClassFile), true)
+			end
+		elsif DEF_DISASM.include?("jad") || disAsmType=="jad"  then
 			exec_cmd = "#{Shellwords.escape(DEF_DISASM)} -r -o -sjava -d#{Shellwords.escape(outputPath)} **/*.class"
 			ExecUtil.getExecResultEachLineWithTimeout(exec_cmd, classesDir, execTimeout)
 		else
@@ -52,6 +67,7 @@ end
 
 class ApkUtil
 	DEF_XMLPRINTER = ENV["PATH_AXMLPRINTER"] ? ENV["PATH_AXMLPRINTER"] : "AXMLPrinter2.jar"
+	DEF_DEX2JAR = ENV["PATH_DEX2JAR"] ? ENV["PATH_DEX2JAR"] : "d2j-dex2jar.sh"
 
 	def self.extractArchive(archivePath, outputDir, specificFile=nil)
 		exec_cmd = "unzip -o -qq  #{Shellwords.escape(archivePath)}"
@@ -260,21 +276,27 @@ class ApkDisasmExecutor < TaskAsync
 
 			# disassemble .class to .java and file output
 			if @source then
+				isRequiredDexToJar = JavaDisasm.isRequiredDexToJar()
+				disassembledSrc = "#{@outputDirectory}/#{DEF_SOURCE}"
 				ApkUtil.extractArchive(@apkName, @outputDirectory, DEF_CLASSES) if !@extractAll
 				classesDexPath = "#{@outputDirectory}/#{DEF_CLASSES}"
 				classDexPaths = []
 				FileUtil.iteratePath( FileUtil.getDirectoryFromPath( classesDexPath ), DEF_CLASSES_REGEXP, classDexPaths, true, false )
 				classDexPaths.each do | aClassDexPath |
-					convertedClassesDexPath = ApkUtil.convertDex2Jar( aClassDexPath, @outputDirectory )
-					if File.exist?( convertedClassesDexPath ) then
-						tmpExtractedClassesPath = "#{@outputDirectory}/#{FileUtil.getFilenameFromPathWithoutExt( convertedClassesDexPath )}"
-						ApkUtil.extractArchive( convertedClassesDexPath, tmpExtractedClassesPath )
-						FileUtils.rm_f( convertedClassesDexPath )
-						if FileTest.directory?( tmpExtractedClassesPath ) then
-							disassembledSrc = "#{@outputDirectory}/#{DEF_SOURCE}"
-							JavaDisasm.disassembleClass( tmpExtractedClassesPath, disassembledSrc, @execTimeout )
-							FileUtils.rm_rf( tmpExtractedClassesPath )
+					if isRequiredDexToJar then
+						convertedClassesDexPath = ApkUtil.convertDex2Jar( aClassDexPath, @outputDirectory )
+						if File.exist?( convertedClassesDexPath ) then
+							tmpExtractedClassesPath = "#{@outputDirectory}/#{FileUtil.getFilenameFromPathWithoutExt( convertedClassesDexPath )}"
+							ApkUtil.extractArchive( convertedClassesDexPath, tmpExtractedClassesPath )
+							FileUtils.rm_f( convertedClassesDexPath )
+							if FileTest.directory?( tmpExtractedClassesPath ) then
+								JavaDisasm.disassembleClass( tmpExtractedClassesPath, disassembledSrc, @execTimeout, aClassDexPath )
+								FileUtils.rm_rf( tmpExtractedClassesPath )
+							end
 						end
+					else
+						# For JADX like disassembler (android .dex format acceptable case, not require normal java .jar)
+						JavaDisasm.disassembleClass( nil, disassembledSrc, @execTimeout, aClassDexPath )
 					end
 					FileUtils.rm_rf( aClassDexPath ) if !@extractAll
 				end

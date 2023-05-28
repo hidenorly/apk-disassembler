@@ -127,7 +127,7 @@ class FileUtil
 	end
 
 	# get regexp matched file list
-	def self.getRegExpFilteredFiles(basePath, fileFilter)
+	def self.getRegExpFilteredFiles(basePath, fileFilter=nil)
 		result=[]
 		iteratePath(basePath, fileFilter, result, true, false)
 
