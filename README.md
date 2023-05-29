@@ -14,8 +14,39 @@ $ wget https://storage.googleapis.com/google-code-archive-downloads/v2/code.goog
 
 You should symlink the built result to e.g. ~/bin.
 
+```.zprofile
+export PATH_AXMLPRINTER=~/bin/AXMLPrinter2.jar
+```
 
-## dex2jar
+## list-apk-signature
+
+```
+% cd ~/work
+% git clone https://github.com/hidenorly/list-apk-signature
+```
+
+You should symlink the built result to e.g. ~/bin.
+
+
+## Setup your preferred java disassembler
+
+### jadx (recommended as of 2023)
+
+https://github.com/skylot/jadx
+
+```
+$ git clone https://github.com/skylot/jadx.git
+$ cd jadx
+$ ./gradlew dist
+```
+
+```.zprofile
+PATH_JAVADISASM=~/work/jadx/build/jadx/bin/jadx
+```
+
+
+
+### dex2jar for jad or jd-cli
 
 ```
 $ cd ~/work
@@ -29,11 +60,8 @@ You may need to clone from my forked git (https://github.com/hidenorly/dex2jar) 
 You should symlink the built result to e.g. ~/bin.
 And you should set the environment variable for it.
 
-```.zprofile
-export PATH_AXMLPRINTER=~/bin/AXMLPrinter2.jar
-```
 
-## jad or jd-core + jd-cli
+### jad (you might be difficult to get)
 
 Download jad and set the env.
 
@@ -43,7 +71,9 @@ export PATH_JAVADISASM=~/bin/jad
 
 Or use following:
 
-### jd-core
+### jd-cli
+
+#### jd-core (Dependent module of jd-cli)
 
 ```
 % cd ~/work
@@ -60,7 +90,7 @@ You should set the environment.
 export JD_CORE_PATH=~/work/jd-core/build/libs/jd-core-1.1.4.jar
 ```
 
-### jd-cli
+#### jd-cli
 
 ```
 % cd ~/work
@@ -76,16 +106,6 @@ You should set the environment.
 export PATH_JAVADISASM=~/bin/class2java.sh
 ```
 
-## list-apk-signature
-
-```
-% cd ~/work
-% git clone https://github.com/hidenorly/list-apk-signature
-```
-
-You should symlink the built result to e.g. ~/bin.
-
-
 
 # Example Usages
 
@@ -94,3 +114,12 @@ You should symlink the built result to e.g. ~/bin.
 ```
 % ruby apk-disassembler.rb sample.apk -a arm64-v8a -l -o tmp
 ```
+
+
+# Todo:
+
+* [x] Add jadx support
+* [] Add summalizer (reporter) for apk-disassembler result
+* [] Add lib/lib64 -> abi supported list & the filter
+* [] Add lib list & the filter for such as gstreamer detection...
+
