@@ -127,8 +127,10 @@ class AndroidAnalyzeUtil
 		"java.",
 		"javax.",
 		"android.",
+		"androidx.",
 		"com.android.",
-		"com.google.android.gms."
+		"com.google.android.",
+		"dalvik."
 	]
 
 	DEF_JAVA_IMPORT="import "
@@ -255,7 +257,12 @@ class AppAnalyzerExecutor < TaskAsync
 		result[:apkSize] = tombstone[:apkSize] if tombstone[:apkName]
 		result[:apkPath] = tombstone[:apkPath] if tombstone[:apkPath]
 		result[:signature] = tombstone[:signature] if tombstone[:signature]
-		codeAnalysis = AndroidAnalyzeUtil.parseJavaSource(@appPath, @options[:importExcludes], @options[:importsMatch])
+		importExcludes = @options[:importExcludes]
+		if result[:packageName] then
+			packageName = FileUtil.getFilenameFromPathWithoutExt(result[:packageName])
+			importExcludes = importExcludes | [ result[:packageName] ] | [ packageName ]
+		end
+		codeAnalysis = AndroidAnalyzeUtil.parseJavaSource(@appPath, importExcludes, @options[:importsMatch])
 		result[:imports] = codeAnalysis[:imports] if !codeAnalysis[:imports].empty?
 
 		if ( result && result[:packageName] && @resultCallback!=nil ) then
