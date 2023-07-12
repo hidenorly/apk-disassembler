@@ -188,8 +188,12 @@ class ApkDisasmExecutor < TaskAsync
 		tmpOut1 = "#{basePath}/#{filename}"
 		tmpOut2 = "#{basePath}/plain-#{filename}"
 		ApkUtil.convertedFromBinaryXmlToPlainXml(tmpOut1, tmpOut2)
-		FileUtils.rm_f(tmpOut1) if File.exist?(tmpOut1)
-		FileUtils.mv(tmpOut2, tmpOut1) if File.exist?(tmpOut2)
+
+		begin
+			FileUtils.rm_f(tmpOut1) if File.exist?(tmpOut1)
+			FileUtils.mv(tmpOut2, tmpOut1) if File.exist?(tmpOut2)
+		rescue => e
+		end
 	end
 
 	def _getCompatibleAbi( path )
@@ -262,7 +266,10 @@ class ApkDisasmExecutor < TaskAsync
 								end
 							else
 								# this is not intended abi's shared object
-								FileUtils.rm_f( aSoPath ) if !@extractAll
+								begin
+									FileUtils.rm_f( aSoPath ) if !@extractAll
+								rescue => e
+								end
 							end
 						end
 					end
