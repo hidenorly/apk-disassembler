@@ -52,6 +52,7 @@ class AndroidAnalyzeUtil
 	def self.parseAndroidManifest(manifestPath)
 		result = {
 			:packageName => nil,
+			:versionName => nil,
 			:sharedUserId => nil,
 			:targetSdkVersion => 0,
 			:persistent => false,
@@ -75,6 +76,7 @@ class AndroidAnalyzeUtil
 
 				if doc then
 					result[:packageName] = getValueFromAttributeInXmlDoc(doc, "manifest", result[:packageName], "package")
+					result[:versionName] = getValueFromAttributeInXmlDoc(doc, "manifest", result[:versionName], "android:versionName")
 					result[:sharedUserId] = getValueFromAttributeInXmlDoc(doc, "manifest", result[:sharedUserId], "android:sharedUserId")
 					result[:targetSdkVersion] = getValueFromAttributeInXmlDoc(doc, "manifest/uses-sdk", result[:targetSdkVersion], "android:targetSdkVersion")
 					result[:persistent] = getValueFromAttributeInXmlDoc(doc, "//application", result[:persistent], "android:persistent")
@@ -297,7 +299,7 @@ end
 options = {
 	:verbose => false,
 	:reportOutPath => nil,
-	:outputSections => "packageName|apkPath|sharedUserId|signature|targetSdkVersion|persistent|usesPermissions|usesLibraries|usesNativeLibraries|usesFeatures|broadcastIntents|apkSize|imports",
+	:outputSections => "packageName|apkPath|versionName|sharedUserId|signature|targetSdkVersion|persistent|usesPermissions|usesLibraries|usesNativeLibraries|usesFeatures|broadcastIntents|apkSize|imports",
 	:importExcludes => AndroidAnalyzeUtil::DEF_ANDROID_EXECLUDE,
 	:importsMatch => nil,
 	:filterPackageName => nil,
