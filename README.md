@@ -2,7 +2,27 @@
 
 Disassemble the apk by extracting the .apk, converting the binary xmls to plain text xml and converting .dex to .class and disassemble the .class(s) to .java.
 
-This supports multiple apks and output the apk's signature, etc.
+This supports multiple apks and output the apk's signature, etc. and also ```app-analyzer.rb" can output the summary.
+
+
+# how to use
+
+Note that please ensure the dependent components first.
+
+## Extract everything
+
+```
+$ ruby apk-disassembler.rb -o ~/tmp/apk -x ~/work/android/out/target/product/generic_x86_64
+```
+
+## Output summarize report
+
+After the extraction,
+
+```
+$ ruby app-analyzer.rb ~/tmp/apk
+```
+
 
 # setup the dependent components
 
