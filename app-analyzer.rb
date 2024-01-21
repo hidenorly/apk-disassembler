@@ -49,7 +49,31 @@ class AndroidAnalyzeUtil
 		return result
 	end
 
-	def self.parseAndroidManifest(manifestPath)
+	def self._getKeyValue(xml, key)
+		result = nil
+		xml = xml.to_s
+		key = key.to_s
+		pos = xml.index(key)
+		if pos!=nil then
+			keyLen=key.length
+			pos2 = xml.index("\"", pos+keyLen)
+			if pos2!=nil then
+				result = xml[pos+keyLen..pos2-1]
+			end
+		end
+		return result
+	end
+
+	def self.fallbackParseAndroidManifest(xml, result)
+		xml = xml.to_s
+		result[:packageName] = _getKeyValue(xml, "package=\"")
+		result[:versionName] = _getKeyValue(xml, "android:versionName=\"")
+		#	:sharedUserId => nil,
+		result[:targetSdkVersion] = _getKeyValue(xml, "android:targetSdkVersion=\"")
+		return result
+	end
+
+	def self.parseAndroidManifest(manifestPath, verbose=false)
 		result = {
 			:packageName => nil,
 			:versionName => nil,
@@ -71,7 +95,8 @@ class AndroidAnalyzeUtil
 				begin
 					doc = REXML::Document.new( xml )
 				rescue REXML::ParseException=>error
-					error.to_s.strip!
+					puts "#{manifestPath} is failed to parse. #{error.to_s.strip!}" if verbose
+					result = fallbackParseAndroidManifest(xml, result)
 				end
 
 				if doc then
@@ -254,8 +279,9 @@ class AppAnalyzerExecutor < TaskAsync
 	end
 
 	def execute
-		result = AndroidAnalyzeUtil.parseAndroidManifest(@appPath)
+		result = AndroidAnalyzeUtil.parseAndroidManifest(@appPath, @verbose)
 		tombstone = AndroidAnalyzeUtil.parseTombstone(@appPath)
+
 		result[:apkSize] = tombstone[:apkSize] if tombstone[:apkName]
 		result[:apkPath] = tombstone[:apkPath] if tombstone[:apkPath]
 		result[:signature] = tombstone[:signature] if tombstone[:signature]
@@ -299,7 +325,7 @@ end
 options = {
 	:verbose => false,
 	:reportOutPath => nil,
-	:outputSections => "packageName|apkPath|versionName|sharedUserId|signature|targetSdkVersion|persistent|usesPermissions|usesLibraries|usesNativeLibraries|usesFeatures|broadcastIntents|apkSize|imports",
+	:outputSections => "apkPath|packageName|versionName|sharedUserId|signature|targetSdkVersion|persistent|usesPermissions|usesLibraries|usesNativeLibraries|usesFeatures|broadcastIntents|apkSize|imports",
 	:importExcludes => AndroidAnalyzeUtil::DEF_ANDROID_EXECLUDE,
 	:importsMatch => nil,
 	:filterPackageName => nil,
@@ -430,9 +456,13 @@ end
 taskMan.executeAll()
 taskMan.finalize()
 
+
 $g_result.sort! do |a, b|
-	ret = a[:packageName].casecmp(b[:packageName])
-	ret == 0 ? a[:packageName] <=> b[:packageName] : ret
+	ret = 0
+	if a.key?(:apkPath) && b.key?(:apkPath)
+		ret = a[:apkPath] <=> b[:apkPath]
+	end
+	ret = (ret == 0) ? a[:packageName] <=> b[:packageName] : ret
 end
 
 reporter = reporter.new( options[:reportOutPath] )
