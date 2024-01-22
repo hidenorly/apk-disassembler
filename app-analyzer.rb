@@ -1,6 +1,6 @@
 #!/usr/bin/ruby
 
-# Copyright 2022, 2023 hidenory
+# Copyright 2022, 2023, 2024 hidenory
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -68,7 +68,7 @@ class AndroidAnalyzeUtil
 		xml = xml.to_s
 		result[:packageName] = _getKeyValue(xml, "package=\"")
 		result[:versionName] = _getKeyValue(xml, "android:versionName=\"")
-		#	:sharedUserId => nil,
+		result[:sharedUserId] = _getKeyValue(xml, "android:sharedUserId=\"")
 		result[:targetSdkVersion] = _getKeyValue(xml, "android:targetSdkVersion=\"")
 		return result
 	end
